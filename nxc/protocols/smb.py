@@ -56,6 +56,7 @@ from nxc.protocols.smb.samrfunc import SamrFunc
 from nxc.protocols.ldap.gmsa import MSDS_MANAGEDPASSWORD_BLOB
 from nxc.helpers.logger import highlight
 from nxc.helpers.bloodhound import add_user_bh
+from nxc.helpers.bloodhound import update_signing_bh
 from nxc.helpers.powershell import create_ps_command
 from nxc.helpers.misc import detect_if_ip
 from nxc.protocols.ldap.resolution import LDAPResolution
@@ -258,6 +259,8 @@ class smb(connection):
 
         try:
             self.signing = self.conn.isSigningRequired() if self.smbv1 else self.conn._SMBConnection._Connection["RequireSigning"]
+            if self.signing is False:
+                update_signing_bh(f"{self.hostname.upper()}$", self.domain.upper(), self.logger, self.config)
         except Exception as e:
             self.logger.debug(e)
 

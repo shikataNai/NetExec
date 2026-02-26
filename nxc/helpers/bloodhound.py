@@ -1,108 +1,146 @@
-def mark_web_client_enabled(machine_account, domain, logger, config):
-    """Marks the web client service as being enabled on a machine account in bloodhound
+def update_signing_bh(hostname, domain, logger, config):
+    """Marks the signing property on a machine account as being disabled
 
     Args:
     ----
-        machine_account(str or list): The machine account/username or a list of machine account/username dictioniares.
-        domain (str): The domain the machine account belongs to.
-        logger (Logger): The logger object for logging messages.
-        config (ConfigParser): The configurationb object for accessing Bloodhound Settings
+        hostname(str or list): The machine hostname or list of {"username": hostname, "domain": domain} dicts.
+        domain (str): The domain the machine belongs to (if hostname is str).
+        logger (Logger): For logging.
+        config (ConfigParser): For Bloodhound settings.
 
-    Returns:
-    -------
-        None
-
-    Raises:
-    ------
-        ValueError: If the inputted account is normal user instead of a machine account
-        AuthError: If the provided Neo4J credentials are not valid.
-        ServiceUnavailable: If Neo4J is not available on the specified URI.
-        Exception: If an unexpected error occurs with Neo4J.
+    Returns: None
+    Raises: ValueError, AuthError, ServiceUnavailable, Exception
     """
-    machines_where_webclient_is_enabled = []
-    if isinstance(machine_account, str):
-        machines_where_webclient_is_enabled.append({"username": machine_account.upper(), "domain": domain.upper()})
-    elif isinstance(machine_account, list):
-        machines_where_webclient_is_enabled = machine_account
+    if config.get("BloodHound", "bh_enabled") == "False":
+        return
+    machines = _normalize_input(hostname, domain)
+    uri, driver = _initiate_bloodhound_connection(config)
+    try:
+        with driver.session().begin_transaction() as tx:
+            for machine_info in machines:
+                _update_property(machine_info, "smbsigning", False, tx, logger, config)
+    except Exception as e:
+        _handle_errors(e, uri, config, logger)
+    finally:
+        driver.close()
 
-    if config.get("BloodHound", "bh_enabled") != "False":
-        from neo4j.exceptions import AuthError, ServiceUnavailable
 
-        uri, driver = _initiate_bloodhound_connection(config)
-        try:
-            with driver.session().begin_transaction() as tx:
-                for machine_info in machines_where_webclient_is_enabled:
-                    distinguished_name = "".join([f"DC={dc}," for dc in machine_info["domain"].split(".")]).rstrip(",")
-                    domain_query = _does_domain_exist_in_bloodhound(distinguished_name, tx)
-                    if not domain_query:
-                        logger.debug(f"Domain {machine_info['domain']} not found in BloodHound. Falling back to domainless query.")
-                        _adjust_webclient_property_without_domain(machine_info, tx, logger)
-                    else:
-                        domain = domain_query[0]["d"].get("name")
-                        _adjust_webclient_property_with_domain(machine_info, domain, tx, logger)
-        except ValueError:
-            logger.fail(f"Inputted account ({machine_info['username']}) is not a machine account")
-        except AuthError:
-            logger.fail(f"Provided Neo4J credentials ({config.get('BloodHound', 'bh_user')}:{config.get('BloodHound', 'bh_pass')}) are not valid.")
-        except ServiceUnavailable:
-            logger.fail(f"Neo4J does not seem to be available on {uri}.")
-        except Exception as e:
-            logger.fail(f"Unexpected error with Neo4J: {e}")
-        finally:
-            driver.close()
+def update_ldaps_channel_binding_bh(hostname, domain, logger, config):
+    """Marks the ldap channel binding property to false and the ldaps available property to true.
+
+    Args: Similar to above, but for ldap channel binding.
+    """
+    if config.get("BloodHound", "bh_enabled") == "False":
+        return
+
+    machines = _normalize_input(hostname, domain)
+    uri, driver = _initiate_bloodhound_connection(config)
+    try:
+        with driver.session().begin_transaction() as tx:
+            for machine_info in machines:
+                _update_property(machine_info, "ldapsavailable", True, tx, logger, config)
+                _update_property(machine_info, "ldapsepa", False, tx, logger, config)
+    except Exception as e:
+        _handle_errors(e, uri, config, logger)
+    finally:
+        driver.close()
+
+
+def update_ldap_signing_bh(hostname, domain, logger, config):
+    """Marks the ldapsigning property to false and the ldap available property to true.
+
+    Args: Similar to above, but for ldap signing.
+    """
+    if config.get("BloodHound", "bh_enabled") == "False":
+        return
+
+    machines = _normalize_input(hostname, domain)
+    uri, driver = _initiate_bloodhound_connection(config)
+    try:
+        with driver.session().begin_transaction() as tx:
+            for machine_info in machines:
+                _update_property(machine_info, "ldapavailable", True, tx, logger, config)
+                _update_property(machine_info, "ldapsigning", False, tx, logger, config)
+    except Exception as e:
+        _handle_errors(e, uri, config, logger)
+    finally:
+        driver.close()
+
+
+def update_web_client_bh(machine_account, domain, logger, config):
+    """Marks the webclientrunning property on a machine as True
+
+    Args: Similar to above, but for webclient.
+    """
+    if config.get("BloodHound", "bh_enabled") == "False":
+        return
+    machines = _normalize_input(machine_account, domain)
+    uri, driver = _initiate_bloodhound_connection(config)
+    try:
+        with driver.session().begin_transaction() as tx:
+            for machine_info in machines:
+                _update_property(machine_info, "webclientrunning", True, tx, logger, config)
+    except Exception as e:
+        _handle_errors(e, uri, config, logger)
+    finally:
+        driver.close()
 
 
 def add_user_bh(user, domain, logger, config):
-    """Adds a user to the BloodHound graph database.
+    """Sets owned property on user/machine to True
 
-    Args:
-    ----
-        user (str or list): The username of the user or a list of user dictionaries.
-        domain (str): The domain of the user.
-        logger (Logger): The logger object for logging messages.
-        config (ConfigParser): The configuration object for accessing BloodHound settings.
-
-    Returns:
-    -------
-        None
-
-    Raises:
-    ------
-        AuthError: If the provided Neo4J credentials are not valid.
-        ServiceUnavailable: If Neo4J is not available on the specified URI.
-        Exception: If an unexpected error occurs with Neo4J.
+    Args: Similar, for owned.
     """
-    users_owned = []
-    if isinstance(user, str):
-        users_owned.append({"username": user.upper(), "domain": domain.upper()})
-    else:
-        users_owned = user
+    if config.get("BloodHound", "bh_enabled") == "False":
+        return
+    accounts = _normalize_input(user, domain)
+    uri, driver = _initiate_bloodhound_connection(config)
+    try:
+        with driver.session().begin_transaction() as tx:
+            for account_info in accounts:
+                _update_property(account_info, "owned", True, tx, logger, config)
+    except Exception as e:
+        _handle_errors(e, uri, config, logger)
+    finally:
+        driver.close()
 
-    if config.get("BloodHound", "bh_enabled") != "False":
-        # we do a conditional import here to avoid loading these if BH isn't enabled
-        from neo4j.exceptions import AuthError, ServiceUnavailable
 
-        uri, driver = _initiate_bloodhound_connection(config)
+def _normalize_input(input_val, domain):
+    """Normalizes str or list input to list of dicts."""
+    normalized = []
+    if isinstance(input_val, str):
+        normalized.append({"username": input_val.upper(), "domain": domain.upper()})
+    elif isinstance(input_val, list):
+        normalized = input_val  # Assume already dicts
+    return normalized
 
-        try:
-            with driver.session().begin_transaction() as tx:
-                for user_info in users_owned:
-                    distinguished_name = "".join([f"DC={dc}," for dc in user_info["domain"].split(".")]).rstrip(",")
-                    domain_query = _does_domain_exist_in_bloodhound(distinguished_name, tx)
-                    if not domain_query:
-                        logger.debug(f"Domain {user_info['domain']} not found in BloodHound. Falling back to domainless query.")
-                        _add_without_domain(user_info, tx, logger)
-                    else:
-                        domain = domain_query[0]["d"].get("name")
-                        _add_with_domain(user_info, domain, tx, logger)
-        except AuthError:
-            logger.fail(f"Provided Neo4J credentials ({config.get('BloodHound', 'bh_user')}:{config.get('BloodHound', 'bh_pass')}) are not valid.")
-        except ServiceUnavailable:
-            logger.fail(f"Neo4J does not seem to be available on {uri}.")
-        except Exception as e:
-            logger.fail(f"Unexpected error with Neo4J: {e}")
-        finally:
-            driver.close()
+
+def _update_property(account_info, property_name, value, tx, logger, config):
+    """Central func to set property on account node."""
+    distinguished_name = "".join([f"DC={dc}," for dc in account_info["domain"].split(".")]).rstrip(",")
+    domain_query = _does_domain_exist_in_bloodhound(account_info["domain"], tx)
+    domain_val = domain_query[0]["d"].get("name").upper() if domain_query else None
+    if domain_val is None:
+        logger.debug(f"Domain {account_info['domain']} not found. Falling back to domainless.")
+    _set_property_on_account_node(account_info, domain_val, property_name, value, tx, logger, config)
+
+def _set_property_on_account_node(account_info, domain, property_name, value, tx, logger, config):
+    """Central func to update and set property on account node."""
+    account_name, account_type = _parse_user_or_machine_account(account_info, domain)
+    cypher_match = f"MATCH (c:{account_type} {{name:'{account_name}'}})" if domain else f"MATCH (c:{account_type}) WHERE c.name STARTS WITH '{account_name}'"
+    result = tx.run(f"{cypher_match} RETURN c").data()
+    if not result:
+        logger.fail(f"Account {account_name} not found in BloodHound.")
+        return
+    if len(result) > 1:
+        logger.fail(f"Multiple accounts found for {account_info['username']}. Specify FQDN.")
+        return
+    current_val = result[0]["c"].get(property_name)
+    if current_val != value:
+        cypher_set = f"{cypher_match} SET c.{property_name} = {value} RETURN c.name AS name"
+        logger.debug(cypher_set)
+        result = tx.run(cypher_set).data()[0]
+        logger.highlight(f"Node {result['name']} set {property_name} to {value} in BloodHound.")
 
 
 def _initiate_bloodhound_connection(config):
@@ -121,39 +159,8 @@ def _initiate_bloodhound_connection(config):
     return uri, driver
 
 
-def _does_domain_exist_in_bloodhound(distinguished_name, tx):
-    return tx.run(f"MATCH (d:Domain) WHERE d.distinguishedname STARTS WITH '{distinguished_name}' RETURN d").data()
-
-
-def _adjust_webclient_property_with_domain(machine_info, domain, tx, logger):
-    webclient_enabled_machine, account_type = _parse_user_or_machine_account(machine_info, domain)
-
-    result = tx.run(f"MATCH (c:{account_type} {{name:'{webclient_enabled_machine}'}}) RETURN c").data()
-
-    if len(result) == 0:
-        logger.fail("Computer not found in the BloodHound database")
-        return
-    if result[0]["c"].get("webclientrunning") in (False, None):
-        logger.debug(f"MATCH (c:{account_type} {{name:'{webclient_enabled_machine}'}}) SET c.webclientrunning=True RETURN c.name AS name")
-        result = tx.run(f"MATCH (c:{account_type} {{name:'{webclient_enabled_machine}'}}) SET c.webclientrunning=True RETURN c.name AS name").data()[0]
-        logger.highlight(f"Node {result['name']} successfully noted that webclient was running on this device in the BloodHound database")
-
-
-def _adjust_webclient_property_without_domain(machine_info, tx, logger):
-    webclient_enabled_machine, account_type = _parse_user_or_machine_account(machine_info)
-
-    result = tx.run(f"MATCH (c:{account_type}) WHERE c.name STARTS WITH '{webclient_enabled_machine}' RETURN c").data()
-
-    if len(result) == 0:
-        logger.fail("Account not found in the BloodHound database.")
-        return
-    elif len(result) >= 2:
-        logger.fail(f"Multiple accounts found with the name '{webclient_enabled_machine['username']}' in the BloodHound database. Please specify the FQDN ex:domain.local")
-        return
-    elif result[0]["c"].get("webclientrunning") in (False, None):
-        logger.debug(f"MATCH (c:{account_type} {{name:'{result[0]['c']['name']}'}}) SET c.webclientrunning=True RETURN c.name AS name")
-        result = tx.run(f"MATCH (c:{account_type} {{name:'{result[0]['c']['name']}'}}) SET c.webclientrunning=True RETURN c.name AS name").data()[0]
-        logger.highlight(f"Node {result['name']} successfully noted that webclient was running on this device in the BloodHound database")
+def _does_domain_exist_in_bloodhound(domain_name, tx):
+    return tx.run(f"MATCH (d:Domain) WHERE d.name = '{domain_name}' RETURN d").data()
 
 
 def _parse_user_or_machine_account(user_info, domain=None):
@@ -169,33 +176,14 @@ def _parse_user_or_machine_account(user_info, domain=None):
 
     return user_owned, account_type
 
+def _handle_errors(e, uri, config, logger):
+    from neo4j.exceptions import AuthError, ServiceUnavailable
 
-def _add_with_domain(user_info, domain, tx, logger):
-    user_owned, account_type = _parse_user_or_machine_account(user_info, domain)
-
-    result = tx.run(f"MATCH (c:{account_type} {{name:'{user_owned}'}}) RETURN c").data()
-
-    if len(result) == 0:
-        logger.fail("Account not found in the BloodHound database.")
-        return
-    if result[0]["c"].get("owned") in (False, None):
-        logger.debug(f"MATCH (c:{account_type} {{name:'{user_owned}'}}) SET c.owned=True RETURN c.name AS name")
-        result = tx.run(f"MATCH (c:{account_type} {{name:'{user_owned}'}}) SET c.owned=True RETURN c.name AS name").data()[0]
-        logger.highlight(f"Node {result['name']} successfully set as owned in BloodHound")
-
-
-def _add_without_domain(user_info, tx, logger):
-    user_owned, account_type = _parse_user_or_machine_account(user_info)
-
-    result = tx.run(f"MATCH (c:{account_type}) WHERE c.name STARTS WITH '{user_owned}' RETURN c").data()
-
-    if len(result) == 0:
-        logger.fail("Account not found in the BloodHound database.")
-        return
-    elif len(result) >= 2:
-        logger.fail(f"Multiple accounts found with the name '{user_info['username']}' in the BloodHound database. Please specify the FQDN ex:domain.local")
-        return
-    elif result[0]["c"].get("owned") in (False, None):
-        logger.debug(f"MATCH (c:{account_type} {{name:'{result[0]['c']['name']}'}}) SET c.owned=True RETURN c.name AS name")
-        result = tx.run(f"MATCH (c:{account_type} {{name:'{result[0]['c']['name']}'}}) SET c.owned=True RETURN c.name AS name").data()[0]
-        logger.highlight(f"Node {result['name']} successfully set as owned in BloodHound")
+    if isinstance(e, ValueError):
+        logger.fail(f"Inputted account is not a machine account: {e!s}")
+    elif isinstance(e, AuthError):
+        logger.fail(f"Invalid Neo4j creds: {config.get('BloodHound', 'bh_user')}:{config.get('BloodHound', 'bh_pass')}")
+    elif isinstance(e, ServiceUnavailable):
+        logger.fail(f"Neo4j unavailable on {uri}")
+    else:
+        logger.fail(f"Unexpected Neo4j error: {e}")
