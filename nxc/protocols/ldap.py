@@ -224,7 +224,7 @@ class ldap(connection):
             ldap_connection = ldap_impacket.LDAPConnection(url=ldap_url, baseDN=self.baseDN, dstIp=self.host, signing=False)
             ldap_connection.login(domain=self.domain)
             self.logger.debug(f"LDAP signing is not enforced on {self.host}")
-            update_ldap_signing_bh(f"{self.hostname.upper()}$", self.domain.upper(), self.logger, self.config)
+            update_ldap_signing_bh(f"{self.hostname.upper()}$", self.targetDomain.upper(), self.logger, self.config)
         except ldap_impacket.LDAPSessionError as e:
             if str(e).find("strongerAuthRequired") >= 0:
                 self.logger.debug(f"LDAP signing is enforced on {self.host}")
@@ -265,7 +265,7 @@ class ldap(connection):
                 raise
 
         if self.cbt_status != "Always":
-            update_ldaps_channel_binding_bh(f"{self.hostname.upper()}$", self.domain.upper(), self.logger, self.config)
+            update_ldaps_channel_binding_bh(f"{self.hostname.upper()}$", self.targetDomain.upper(), self.logger, self.config)
 
     def enum_host_info(self):
         # Enumerate LDAP info
