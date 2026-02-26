@@ -117,12 +117,13 @@ def _normalize_input(input_val, domain):
 
 def _update_property(account_info, property_name, value, tx, logger, config):
     """Central func to set property on account node."""
-    distinguished_name = "".join([f"DC={dc}," for dc in account_info["domain"].split(".")]).rstrip(",")
+    "".join([f"DC={dc}," for dc in account_info["domain"].split(".")]).rstrip(",")
     domain_query = _does_domain_exist_in_bloodhound(account_info["domain"], tx)
     domain_val = domain_query[0]["d"].get("name").upper() if domain_query else None
     if domain_val is None:
         logger.debug(f"Domain {account_info['domain']} not found. Falling back to domainless.")
     _set_property_on_account_node(account_info, domain_val, property_name, value, tx, logger, config)
+
 
 def _set_property_on_account_node(account_info, domain, property_name, value, tx, logger, config):
     """Central func to update and set property on account node."""
@@ -175,6 +176,7 @@ def _parse_user_or_machine_account(user_info, domain=None):
         account_type = "User"
 
     return user_owned, account_type
+
 
 def _handle_errors(e, uri, config, logger):
     from neo4j.exceptions import AuthError, ServiceUnavailable
