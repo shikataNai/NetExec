@@ -260,7 +260,7 @@ class smb(connection):
         try:
             self.signing = self.conn.isSigningRequired() if self.smbv1 else self.conn._SMBConnection._Connection["RequireSigning"]
             if self.signing is False:
-                update_signing_bh(f"{self.hostname.upper()}$", self.domain.upper(), self.logger, self.config)
+                update_signing_bh(f"{self.hostname.upper()}$", self.targetDomain.upper(), self.logger, self.config)
         except Exception as e:
             self.logger.debug(e)
 
