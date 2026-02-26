@@ -117,8 +117,10 @@ def _normalize_input(input_val, domain):
 
 def _update_property(account_info, property_name, value, tx, logger, config):
     """Central func to set property on account node."""
+    distinguished_name = "".join([f"DC={dc}," for dc in account_info["domain"].split(".")]).rstrip(",")
     domain_query = _does_domain_exist_in_bloodhound(account_info["domain"], tx)
     domain_val = domain_query[0]["d"].get("name").upper() if domain_query else None
+    logger.debug(f"Update property is using domain: {domain_val}. Domain query = {domain_query}. DN = {distinguished_name}")
     if domain_val is None:
         logger.debug(f"Domain {account_info['domain']} not found. Falling back to domainless.")
     _set_property_on_account_node(account_info, domain_val, property_name, value, tx, logger, config)
@@ -141,6 +143,8 @@ def _set_property_on_account_node(account_info, domain, property_name, value, tx
         logger.debug(cypher_set)
         result = tx.run(cypher_set).data()[0]
         logger.highlight(f"Node {result['name']} set {property_name} to {value} in BloodHound.")
+    else:
+        logger.debug(f"The Node {result[0]['c'].get('name', 'Unknown')} already has the {property_name} property set to {value} in BloodHound.")
 
 
 def _initiate_bloodhound_connection(config):
