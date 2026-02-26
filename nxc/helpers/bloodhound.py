@@ -117,7 +117,6 @@ def _normalize_input(input_val, domain):
 
 def _update_property(account_info, property_name, value, tx, logger, config):
     """Central func to set property on account node."""
-    "".join([f"DC={dc}," for dc in account_info["domain"].split(".")]).rstrip(",")
     domain_query = _does_domain_exist_in_bloodhound(account_info["domain"], tx)
     domain_val = domain_query[0]["d"].get("name").upper() if domain_query else None
     if domain_val is None:
@@ -145,6 +144,7 @@ def _set_property_on_account_node(account_info, domain, property_name, value, tx
 
 
 def _initiate_bloodhound_connection(config):
+    """Standardized function for initializing the connection to neo4j."""
     from neo4j import GraphDatabase
 
     uri = f"bolt://{config.get('BloodHound', 'bh_uri')}:{config.get('BloodHound', 'bh_port')}"
@@ -161,10 +161,12 @@ def _initiate_bloodhound_connection(config):
 
 
 def _does_domain_exist_in_bloodhound(domain_name, tx):
+    """A basic query query used for identifying if a domain exists in bloodhound already"""
     return tx.run(f"MATCH (d:Domain) WHERE d.name = '{domain_name}' RETURN d").data()
 
 
 def _parse_user_or_machine_account(user_info, domain=None):
+    """Standardized function for parsing identifying the type of account the code is dealing with"""
     user_owned = ""
     account_type = ""
     if user_info["username"][-1] == "$":
