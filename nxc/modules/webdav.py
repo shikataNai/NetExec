@@ -39,7 +39,7 @@ class NXCModule:
             remote_file.open_file()
 
             context.log.highlight(self.output.format(connection.conn.getRemoteHost()))
-            update_web_client_bh(f"{connection.hostname}$", connection.domain, context.log, connection.config)
+            update_web_client_bh(f"{connection.hostname}$", connection.targetDomain.upper(), context.log, connection.config)
         except SessionError as e:
             if e.getErrorCode() == nt_errors.STATUS_OBJECT_NAME_NOT_FOUND:
                 return
