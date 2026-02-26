@@ -4,6 +4,7 @@ from impacket import nt_errors
 from impacket.smb3structs import FILE_READ_DATA
 from impacket.smbconnection import SessionError
 from impacket.nmb import NetBIOSError
+from nxc.helpers.bloodhound import mark_web_client_enabled
 import contextlib
 
 
@@ -38,6 +39,7 @@ class NXCModule:
             remote_file.open_file()
 
             context.log.highlight(self.output.format(connection.conn.getRemoteHost()))
+            mark_web_client_enabled(f"{connection.hostname}$", connection.domain, context.log, connection.config)
         except SessionError as e:
             if e.getErrorCode() == nt_errors.STATUS_OBJECT_NAME_NOT_FOUND:
                 return
